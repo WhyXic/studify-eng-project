@@ -1,128 +1,142 @@
 import RPi.GPIO as GPIO
 import Adafruit_DHT
-import time
-import pygame
-import board
-import busio
-from adafruit_ht16k33.segments import Seg7x4
+from time import sleep, time
+import sys
 
-# Setup for Ultrasonic Sensor
-TRIG = 17
-ECHO = 27
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(TRIG, GPIO.OUT)
-GPIO.setup(ECHO, GPIO.IN)
-
-# Setup for DHT22 Temperature Sensor
+# Set up components
 DHT_SENSOR = Adafruit_DHT.DHT22
 DHT_PIN = 4
 
-# Setup for Display
-i2c = busio.I2C(board.SCL, board.SDA)
-display = Seg7x4(i2c)
+# LCD Pin setup
+LCD_RS = 26
+LCD_E = 19
+LCD_D4 = 13
+LCD_D5 = 6
+LCD_D6 = 5
+LCD_D7 = 11
 
-# Setup for Speaker
-pygame.mixer.init()
-alert_sound = "alert.wav"
+# Grove Speaker Pin
+SPEAKER_PIN = 18
 
-# Constants
-TEMP_THRESHOLD = 30  # Temperature threshold in Celsius
-DISTRACTION_THRESHOLD = 10  # Seconds to trigger alert if away from desk
-WORK_DURATION = 25 * 60  # 25 minutes in seconds
-BREAK_DURATION = 5 * 60   # 5 minutes in seconds
+# Constants for LCD
+LCD_WIDTH = 16
+LCD_CHR = True
+LCD_CMD = False
 
-# Variables
-distraction_start = None
-pomodoro_running = True
-timer_end = time.time() + WORK_DURATION
+# Timer durations
+POMODORO_DURATION = 25 * 60  # 25 minutes
+BREAK_DURATION = 5 * 60      # 5 minutes
 
-def measure_distance():
-    """Get the distance using the ultrasonic sensor."""
-    GPIO.output(TRIG, True)
-    time.sleep(0.00001)
-    GPIO.output(TRIG, False)
-    
-    start_time = time.time()
-    stop_time = time.time()
-    
-    while GPIO.input(ECHO) == 0:
-        start_time = time.time()
-    
-    while GPIO.input(ECHO) == 1:
-        stop_time = time.time()
-    
-    # Calculate distance
-    elapsed = stop_time - start_time
-    distance = (elapsed * 34300) / 2  # Speed of sound = 34300 cm/s
-    return distance
+# GPIO setup
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+GPIO.setup(SPEAKER_PIN, GPIO.OUT)
 
-def get_temperature():
-    """Get the temperature reading from DHT22 sensor."""
+# Speaker PWM setup
+speaker = GPIO.PWM(SPEAKER_PIN, 1000)  # Set frequency to 1kHz
+
+# LCD initialization
+def lcd_init():
+    GPIO.setup(LCD_E, GPIO.OUT)
+    GPIO.setup(LCD_RS, GPIO.OUT)
+    GPIO.setup(LCD_D4, GPIO.OUT)
+    GPIO.setup(LCD_D5, GPIO.OUT)
+    GPIO.setup(LCD_D6, GPIO.OUT)
+    GPIO.setup(LCD_D7, GPIO.OUT)
+
+    lcd_command(0x33) # Initialize
+    lcd_command(0x32) # Set to 4-bit mode
+    lcd_command(0x28) # 2 line, 5x7 matrix
+    lcd_command(0x0C) # Turn cursor off
+    lcd_command(0x06) # Shift cursor right
+    lcd_command(0x01) # Clear display
+
+def lcd_command(bits):
+    GPIO.output(LCD_RS, LCD_CMD)
+    send_to_lcd(bits)
+
+def lcd_char(bits):
+    GPIO.output(LCD_RS, LCD_CHR)
+    send_to_lcd(bits)
+
+def send_to_lcd(bits):
+    GPIO.output(LCD_D4, bool(bits & 0x10))
+    GPIO.output(LCD_D5, bool(bits & 0x20))
+    GPIO.output(LCD_D6, bool(bits & 0x40))
+    GPIO.output(LCD_D7, bool(bits & 0x80))
+    GPIO.output(LCD_E, True)
+    sleep(0.001)
+    GPIO.output(LCD_E, False)
+
+    GPIO.output(LCD_D4, bool(bits & 0x01))
+    GPIO.output(LCD_D5, bool(bits & 0x02))
+    GPIO.output(LCD_D6, bool(bits & 0x04))
+    GPIO.output(LCD_D7, bool(bits & 0x08))
+    GPIO.output(LCD_E, True)
+    sleep(0.001)
+    GPIO.output(LCD_E, False)
+
+def lcd_display(message):
+    lcd_command(0x01)  # Clear display
+    for char in message:
+        lcd_char(ord(char))
+
+# Function to read temperature
+def read_temperature():
     humidity, temperature = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_PIN)
     return temperature
 
+# Function to play speaker alert
 def play_alert():
-    """Play an alert sound."""
-    pygame.mixer.music.load(alert_sound)
-    pygame.mixer.music.play()
+    speaker.start(50)
+    sleep(0.5)
+    speaker.stop()
 
-def display_status(temperature, time_left, session_type):
-    """Display current status on the display."""
-    display.fill(0)
-    mins, secs = divmod(time_left, 60)
-    display.print(f"{session_type[:4]} {mins:02}:{secs:02}")
-    display.show()
-    print(f"Temp: {temperature:.1f}°C, Timer: {mins:02}:{secs:02}, Session: {session_type}")
+def play_pomodoro_complete_sound():
+    for _ in range(3):
+        speaker.start(50)
+        sleep(0.3)
+        speaker.stop()
+        sleep(0.2)
 
-try:
-    while True:
-        # Measure temperature
-        temperature = get_temperature()
+# Function to run Pomodoro timer
+def pomodoro_timer():
+    start_time = time()
+    lcd_display("Pomodoro: Focus")
+    
+    while time() - start_time < POMODORO_DURATION:
+        remaining = POMODORO_DURATION - int(time() - start_time)
+        lcd_display(f"Focus: {remaining // 60:02}:{remaining % 60:02}")
+        sleep(1)
         
-        # Check for high temperature alert
-        if temperature and temperature > TEMP_THRESHOLD:
-            print("Warning: Temperature too high!")
+        # Check temperature during Pomodoro
+        temp = read_temperature()
+        if temp and temp > 30:
+            lcd_display(f"Temp: {temp:.1f}C!")
             play_alert()
+            sleep(2)
+    
+    play_pomodoro_complete_sound()
 
-        # Check user presence
-        distance = measure_distance()
-        present = distance < 100  # Adjust this threshold if needed
+def break_timer():
+    start_time = time()
+    lcd_display("Break: Relax")
 
-        # Handle distraction alert
-        if present:
-            distraction_start = None
-        else:
-            if distraction_start is None:
-                distraction_start = time.time()
-            elif time.time() - distraction_start > DISTRACTION_THRESHOLD:
-                print("You've been away for too long!")
-                play_alert()
+    while time() - start_time < BREAK_DURATION:
+        remaining = BREAK_DURATION - int(time() - start_time)
+        lcd_display(f"Break: {remaining // 60:02}:{remaining % 60:02}")
+        sleep(1)
 
-        # Handle Pomodoro Timer
-        time_left = timer_end - time.time()
-        if time_left <= 0:
-            # Switch between work and break sessions
-            if pomodoro_running:
-                print("Time for a break!")
-                play_alert()
-                timer_end = time.time() + BREAK_DURATION
-                pomodoro_running = False
-            else:
-                print("Back to work!")
-                play_alert()
-                timer_end = time.time() + WORK_DURATION
-                pomodoro_running = True
-        
-        # Display status
-        session_type = "Work" if pomodoro_running else "Break"
-        display_status(temperature, time_left, session_type)
-        
-        # Sleep for a short interval before the next loop iteration
-        time.sleep(1)
+# Main loop
+try:
+    lcd_init()
+    while True:
+        pomodoro_timer()
+        break_timer()
 
 except KeyboardInterrupt:
     print("Exiting...")
 finally:
+    speaker.stop()
     GPIO.cleanup()
-    display.fill(0)
-    display.show()
+    sys.exit()
