@@ -1,12 +1,30 @@
-import Adafruit_DHT
+import adafruit_dht
+import board
+import time
 
-DHT_SENSOR = Adafruit_DHT.DHT22  # Use DHT11 if that's your sensor type
-DHT_PIN = 4  # Adjust this pin number if needed
+# Change DHT22 to DHT11 if you're using that model
+DHT_SENSOR = adafruit_dht.DHT22(board.D4)  # Change board.D4 if you're using a different GPIO pin
 
 print("Testing DHT Sensor...")
-humidity, temperature = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_PIN)
 
-if humidity is not None and temperature is not None:
-    print(f"Temperature: {temperature:.2f}C, Humidity: {humidity:.2f}%")
-else:
-    print("Failed to retrieve data from the sensor")
+while True:
+    try:
+        temperature = DHT_SENSOR.temperature
+        humidity = DHT_SENSOR.humidity
+
+        if temperature is not None and humidity is not None:
+            print(f"Temperature: {temperature:.1f}°C, Humidity: {humidity:.1f}%")
+        else:
+            print("Sensor read failed, retrying...")
+
+        # Sleep for 2 seconds before the next read
+        time.sleep(2)
+
+    except RuntimeError as error:
+        # Errors happen fairly often, DHT's are hard to read, just keep trying
+        print(f"RuntimeError: {error.args[0]}")
+        time.sleep(2.0)
+        continue
+    except Exception as error:
+        DHT_SENSOR.exit()
+        raise error
