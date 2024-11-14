@@ -2,7 +2,7 @@ import RPi.GPIO as GPIO
 import Adafruit_DHT
 from time import sleep, time
 import sys
-
+import ultrasonic
 # Set up DHT11 sensor
 DHT_SENSOR = Adafruit_DHT.DHT11
 DHT_PIN = 4
