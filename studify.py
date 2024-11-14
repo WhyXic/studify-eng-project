@@ -5,14 +5,14 @@ import sys
 
 # Set up components
 DHT_SENSOR = Adafruit_DHT.DHT22
-DHT_PIN = 4
+DHT_PIN = 23
 
 # Grove Speaker Pin
-SPEAKER_PIN = 18
+SPEAKER_PIN = 16
 
 # Ultrasonic Sensor Pins
-TRIG_PIN = 23
-ECHO_PIN = 24
+TRIG_PIN = 20
+ECHO_PIN = 21
 
 # Constants for timers
 POMODORO_DURATION = 25 * 60  # 25 minutes
