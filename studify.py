@@ -3,16 +3,16 @@ import Adafruit_DHT
 from time import sleep, time
 import sys
 
-# Set up components
-DHT_SENSOR = Adafruit_DHT.DHT22
-DHT_PIN = 23
+# Set up DHT11 sensor
+DHT_SENSOR = Adafruit_DHT.DHT11
+DHT_PIN = 4
 
 # Grove Speaker Pin
-SPEAKER_PIN = 16
+SPEAKER_PIN = 18
 
 # Ultrasonic Sensor Pins
-TRIG_PIN = 20
-ECHO_PIN = 21
+TRIG_PIN = 23
+ECHO_PIN = 24
 
 # Constants for timers
 POMODORO_DURATION = 25 * 60  # 25 minutes
